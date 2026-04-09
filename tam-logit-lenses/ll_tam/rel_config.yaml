@@ -1,0 +1,448 @@
+# =============================================================================
+# spatial_relations_config.yaml
+#
+# Risorsa universale per la semantica delle preposizioni spaziali.
+# Indipendente da dataset, immagini e prompt specifici.
+# Riutilizzabile in qualsiasi progetto di spatial grounding / VLM evaluation.
+#
+# Struttura per ogni preposizione:
+#   canonical     : forma canonica normalizzata (usata come chiave interna)
+#   synonyms      : varianti lessicali e multi-parola per il matching testuale
+#   category      : gruppo semantico (utile per aggregazioni nelle analisi)
+#   mask_strategy : quale area geometrica costituisce la "ground truth" della relazione
+#   mask_params   : parametri aggiuntivi per la strategia (opzionali)
+#   subject_role  : ruolo dell'oggetto che viene posizionato (figure/contained/...)
+#   object_role   : ruolo dell'oggetto di riferimento (ground/container/...)
+#   notes         : note disambiguanti per casi edge
+#
+# mask_strategy ammissibili:
+#   contact_zone          → zona di sovrapposizione/contatto tra sub e obj dilatati
+#                           (variante top/bottom selezionata da mask_params.focus)
+#   object_mask           → maschera intera dell'object (es. contenitore per "inside")
+#   subject_mask          → maschera intera del subject
+#   between_zone          → bbox union - bbox_sub - bbox_obj, intersecato con dilatazioni
+#   subject_outside_object→ subject dilatato, esclusa la maschera dell'object
+#   union_bbox            → bbox che copre entrambi gli oggetti (fallback generico)
+# =============================================================================
+
+version: "1.1"
+language: "en"
+
+# ---------------------------------------------------------------------------
+# VERTICAL — sopra con contatto fisico
+# ---------------------------------------------------------------------------
+prepositions:
+
+  on:
+    canonical: "on"
+    synonyms:
+      - "on top of"
+      - "on the top of"
+      - "upon"
+      - "atop"
+      - "resting on"
+      - "sitting on"
+      - "lying on"
+      - "placed on"
+      - "standing on"
+      - "perched on"
+      - "balanced on"
+      - "on top"
+    category: "vertical_above_contact"
+    mask_strategy: "contact_zone"
+    mask_params:
+      focus: "top_of_object"        # bordo superiore dell'object = zona di contatto attesa
+      dilation_px: 18
+    subject_role: "figure"
+    object_role: "ground"
+    notes: >
+      Il subject è fisicamente appoggiato sulla superficie superiore dell'object.
+      La maschera rilevante è la zona di contatto/sovrapposizione vicino al bordo
+      superiore dell'object. Se non c'è contatto, si usa una striscia del 30%
+      superiore del bounding box dell'object.
+
+  over:
+    canonical: "over"
+    synonyms:
+      - "above"
+      - "overhead"
+      - "hovering over"
+      - "floating above"
+    category: "vertical_above_no_contact"
+    mask_strategy: "contact_zone"
+    mask_params:
+      focus: "top_of_object"
+      dilation_px: 24               # dilatazione più ampia perché non c'è contatto
+    subject_role: "figure"
+    object_role: "ground"
+    notes: >
+      A differenza di "on", non implica contatto fisico. La zona rilevante
+      è comunque sopra l'object, ma con margine più ampio.
+
+  # ---------------------------------------------------------------------------
+  # VERTICAL — sotto
+  # ---------------------------------------------------------------------------
+
+  under:
+    canonical: "under"
+    synonyms:
+      - "below"
+      - "beneath"
+      - "underneath"
+      - "at the bottom of"
+      - "under the"
+      - "below the"
+    category: "vertical_below"
+    mask_strategy: "contact_zone"
+    mask_params:
+      focus: "bottom_of_object"     # bordo inferiore dell'object
+      dilation_px: 18
+    subject_role: "figure"
+    object_role: "ground"
+    notes: >
+      Il subject è sotto l'object. La maschera rilevante è la zona di contatto
+      vicino al bordo inferiore dell'object. Se non c'è contatto, si usa una
+      striscia del 30% inferiore del bounding box dell'object.
+
+  # ---------------------------------------------------------------------------
+  # CONTAINMENT
+  # ---------------------------------------------------------------------------
+
+  inside:
+    canonical: "inside"
+    synonyms:
+      - "in"
+      - "within"
+      - "into"
+      - "contained in"
+      - "enclosed in"
+      - "inside of"
+      - "in the"
+      - "inside the"
+      - "within the"
+    category: "containment"
+    mask_strategy: "object_mask"    # l'intera maschera del contenitore è la GT
+    mask_params:
+      dilation_px: 0
+    subject_role: "contained"
+    object_role: "container"
+    notes: >
+      Il subject è contenuto nell'object. La ground truth è la maschera
+      dell'object (contenitore), poiché il modello deve guardare l'intera
+      regione del contenitore per capire la relazione.
+
+  # ---------------------------------------------------------------------------
+  # LATERAL — prossimità orizzontale
+  # ---------------------------------------------------------------------------
+
+  next_to:
+    canonical: "next to"
+    synonyms:
+      - "beside"
+      - "near"
+      - "close to"
+      - "adjacent to"
+      - "by"
+      - "alongside"
+      - "next"
+      - "by the"
+      - "near the"
+      - "beside the"
+      - "close"
+      - "nearby"
+      - "side by side"
+      - "side-by-side"
+    category: "lateral_proximity"
+    mask_strategy: "between_zone"
+    mask_params:
+      dilation_px: 18
+    subject_role: "figure"
+    object_role: "ground"
+    notes: >
+      Il subject è lateralmente vicino all'object. La zona rilevante è l'area
+      tra i due bounding box, escludendo le maschere degli oggetti stessi.
+      Fallback: union bbox se non c'è gap tra i due oggetti.
+
+  left_of:
+    canonical: "left of"
+    synonyms:
+      - "to the left of"
+      - "on the left of"
+      - "on the left side of"
+      - "left"
+    category: "lateral_left"
+    mask_strategy: "between_zone"
+    mask_params:
+      dilation_px: 18
+      side: "left"
+    subject_role: "figure"
+    object_role: "ground"
+    notes: >
+      Il subject è a sinistra dell'object. La zona rilevante è l'area
+      a sinistra dell'object che si sovrappone alla dilatazione del subject.
+
+  right_of:
+    canonical: "right of"
+    synonyms:
+      - "to the right of"
+      - "on the right of"
+      - "on the right side of"
+      - "right"
+    category: "lateral_right"
+    mask_strategy: "between_zone"
+    mask_params:
+      dilation_px: 18
+      side: "right"
+    subject_role: "figure"
+    object_role: "ground"
+    notes: >
+      Il subject è a destra dell'object. Speculare a left_of.
+
+  # ---------------------------------------------------------------------------
+  # DEPTH — profondità / occlusione
+  # ---------------------------------------------------------------------------
+
+  behind:
+    canonical: "behind"
+    synonyms:
+      - "in back of"
+      - "at the back of"
+      - "in the back of"
+      - "back of"
+      - "occluded by"
+      - "partially hidden by"
+    category: "depth_behind"
+    mask_strategy: "subject_outside_object"
+    mask_params:
+      dilation_px: 18
+    subject_role: "figure"
+    object_role: "occluder"
+    notes: >
+      Il subject è dietro l'object (parzialmente/totalmente occluso).
+      La zona rilevante è la regione del subject dilatato esclusa la maschera
+      dell'object (la parte visibile intorno all'object).
+
+  in_front_of:
+    canonical: "in front of"
+    synonyms:
+      - "in front"
+      - "before"
+      - "ahead of"
+      - "in front of the"
+      - "in the front of"
+    category: "depth_front"
+    mask_strategy: "subject_outside_object"
+    mask_params:
+      dilation_px: 18
+    subject_role: "figure"
+    object_role: "background"
+    notes: >
+      Il subject è davanti all'object. Struttura geometrica simmetrica a
+      "behind" ma con ruoli invertiti. La zona rilevante è il subject
+      dilatato nella regione non coperta dall'object.
+
+  # ---------------------------------------------------------------------------
+  # MULTI-OGGETTO
+  # ---------------------------------------------------------------------------
+
+  between:
+    canonical: "between"
+    synonyms:
+      - "in between"
+      - "in the middle of"
+      - "amid"
+      - "amidst"
+      - "sandwiched between"
+    category: "lateral_between"
+    mask_strategy: "between_zone"
+    mask_params:
+      dilation_px: 18
+      n_objects: 2                  # richiede 2 oggetti di riferimento
+    subject_role: "figure"
+    object_role: "landmarks"        # l'object qui è una coppia di oggetti
+    notes: >
+      Il subject è posizionato tra due oggetti di riferimento. Richiede
+      l'estrazione di almeno due oggetti "ground". La zona rilevante è
+      l'area tra i bounding box dei due oggetti di riferimento.
+
+  among:
+    canonical: "among"
+    synonyms:
+      - "amongst"
+      - "surrounded by"
+      - "in the midst of"
+    category: "lateral_between"
+    mask_strategy: "union_bbox"
+    mask_params:
+      dilation_px: 10
+      n_objects: "multiple"
+    subject_role: "figure"
+    object_role: "group"
+    notes: >
+      Il subject è immerso in un gruppo di oggetti. La zona rilevante
+      è il bounding box che copre l'intero gruppo.
+
+  # ---------------------------------------------------------------------------
+  # ATTACHMENT / SUPERFICI VERTICALI
+  # ---------------------------------------------------------------------------
+
+  against:
+    canonical: "against"
+    synonyms:
+      - "leaning against"
+      - "leaning on"
+      - "resting against"
+      - "pushed against"
+    category: "vertical_contact"
+    mask_strategy: "contact_zone"
+    mask_params:
+      focus: "any"                  # contatto su qualsiasi lato
+      dilation_px: 20
+    subject_role: "figure"
+    object_role: "surface"
+    notes: >
+      Il subject è appoggiato contro una superficie verticale (es. muro).
+      La zona rilevante è il punto di contatto tra i due oggetti.
+
+  attached_to:
+    canonical: "attached to"
+    synonyms:
+      - "hanging from"
+      - "hung on"
+      - "mounted on"
+      - "fixed to"
+      - "attached"
+      - "hanging on"
+    category: "attachment"
+    mask_strategy: "contact_zone"
+    mask_params:
+      focus: "any"
+      dilation_px: 15
+    subject_role: "figure"
+    object_role: "support"
+    notes: >
+      Il subject è fissato o appeso all'object. La zona rilevante
+      è il punto di contatto/attaccamento.
+
+# ---------------------------------------------------------------------------
+# LOOKUP RAPIDO: da token singolo → canonical
+# Usato dal parser per normalizzare token singoli trovati nel testo.
+# Elenca SOLO i token che possono apparire come parola singola
+# (non frasi multi-parola, che vengono matchate prima nel parsing).
+# ---------------------------------------------------------------------------
+
+single_token_lookup:
+  # vertical above
+  "on":       "on"
+  "upon":     "on"
+  "atop":     "on"
+  "over":     "over"
+  "above":    "over"
+  # vertical below
+  "under":    "under"
+  "below":    "under"
+  "beneath":  "under"
+  "underneath": "under"
+  # containment
+  "inside":   "inside"
+  "within":   "inside"
+  "in":       "inside"
+  # lateral
+  "next":     "next_to"
+  "beside":   "next_to"
+  "near":     "next_to"
+  "adjacent": "next_to"
+  "alongside": "next_to"
+  "nearby":   "next_to"
+  "left":     "left_of"
+  "right":    "right_of"
+  # depth
+  "behind":   "behind"
+  "before":   "in_front_of"
+  # multi
+  "between":  "between"
+  "among":    "among"
+  "amongst":  "among"
+  # attachment
+  "against":  "against"
+
+# ---------------------------------------------------------------------------
+# MULTI-TOKEN PHRASES: frasi da matchare PRIMA dei token singoli.
+# Ordinate per lunghezza decrescente per garantire match greedy corretto.
+# ---------------------------------------------------------------------------
+
+multi_token_phrases:
+  - phrase: "on top of"
+    canonical: "on"
+  - phrase: "on the top of"
+    canonical: "on"
+  - phrase: "resting on"
+    canonical: "on"
+  - phrase: "sitting on"
+    canonical: "on"
+  - phrase: "lying on"
+    canonical: "on"
+  - phrase: "placed on"
+    canonical: "on"
+  - phrase: "standing on"
+    canonical: "on"
+  - phrase: "perched on"
+    canonical: "on"
+  - phrase: "in front of"
+    canonical: "in_front_of"
+  - phrase: "in the front of"
+    canonical: "in_front_of"
+  - phrase: "in back of"
+    canonical: "behind"
+  - phrase: "at the back of"
+    canonical: "behind"
+  - phrase: "in the back of"
+    canonical: "behind"
+  - phrase: "next to"
+    canonical: "next_to"
+  - phrase: "close to"
+    canonical: "next_to"
+  - phrase: "adjacent to"
+    canonical: "next_to"
+  - phrase: "side by side"
+    canonical: "next_to"
+  - phrase: "to the left of"
+    canonical: "left_of"
+  - phrase: "on the left of"
+    canonical: "left_of"
+  - phrase: "on the left side of"
+    canonical: "left_of"
+  - phrase: "to the right of"
+    canonical: "right_of"
+  - phrase: "on the right of"
+    canonical: "right_of"
+  - phrase: "on the right side of"
+    canonical: "right_of"
+  - phrase: "in between"
+    canonical: "between"
+  - phrase: "in the middle of"
+    canonical: "between"
+  - phrase: "surrounded by"
+    canonical: "among"
+  - phrase: "in the midst of"
+    canonical: "among"
+  - phrase: "leaning against"
+    canonical: "against"
+  - phrase: "leaning on"
+    canonical: "on"
+  - phrase: "resting against"
+    canonical: "against"
+  - phrase: "hanging from"
+    canonical: "attached_to"
+  - phrase: "hung on"
+    canonical: "attached_to"
+  - phrase: "mounted on"
+    canonical: "attached_to"
+  - phrase: "at the bottom of"
+    canonical: "under"
+  - phrase: "contained in"
+    canonical: "inside"
+  - phrase: "enclosed in"
+    canonical: "inside"
+  - phrase: "ahead of"
+    canonical: "in_front_of"
