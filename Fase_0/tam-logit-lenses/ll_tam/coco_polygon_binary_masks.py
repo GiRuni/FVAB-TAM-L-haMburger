@@ -21,7 +21,7 @@ TARGET_IMG_IDS_STR = [
 
 
 DEFAULT_INSTANCES_JSON = Path(r"Fase_0/tam-logit-lenses/ll_tam/instances_minival2014.json")
-DEFAULT_OUTPUT_DIR = Path(r"Fase_0/tam-logit-lenses/ll_tam/masks")
+DEFAULT_OUTPUT_DIR = Path(r"masks")
 
 
 def resolve_existing_path(*candidates: Path) -> Path:
