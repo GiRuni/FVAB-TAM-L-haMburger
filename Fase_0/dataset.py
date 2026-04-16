@@ -6,7 +6,7 @@ from pathlib import Path
 
 DEFAULT_CAPTIONS_JSON = Path(r"/content/FVAB-TAM-L-haMburger/tam-logit-lenses/ll_tam/instances_minival2014.json")
 DEFAULT_INSTANCES_JSON = Path(r"/content/FVAB-TAM-L-haMburger/tam-logit-lenses/ll_tam/data/coco2014/annotations/instances_minival2014.json")
-DEFAULT_OUTPUT_CSV = Path(r"captions_selected.csv")
+DEFAULT_OUTPUT_CSV = Path(r"dataset.csv")
 
 
 TARGET_IMG_IDS_STR = [
