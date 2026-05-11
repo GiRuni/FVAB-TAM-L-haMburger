@@ -136,15 +136,21 @@ if __name__ == "__main__":
                 if len(mask_files) == 1:
                     # Single mask → just load & binarize
                     mask = cv2.imread(mask_files[0], cv2.IMREAD_GRAYSCALE)
+                    if mask is None:
+                        print(f"[ERROR] {image_id} relation {relation_num}: failed to load mask {mask_files[0]}")
+                        continue
                     _, combined_mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
                 else:
                     # Multiple masks → combine all
                     combined_mask = combine_multiple_masks(mask_files)
 
                 output_path = os.path.join(image_output_dir, f"{relation_num}.png")
-                cv2.imwrite(output_path, combined_mask)
-
-                print(f"[OK] {image_id} relation {relation_num} ({len(mask_files)} masks) -> {output_path}")
+                success = cv2.imwrite(output_path, combined_mask)
+                
+                if success:
+                    print(f"[OK] {image_id} relation {relation_num} ({len(mask_files)} masks) -> {output_path}")
+                else:
+                    print(f"[ERROR] {image_id} relation {relation_num}: failed to write output to {output_path}")
 
             except Exception as e:
                 print(f"[ERROR] {image_id} relation {relation_num}: {e}")
