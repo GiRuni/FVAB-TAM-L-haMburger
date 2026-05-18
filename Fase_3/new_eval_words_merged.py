@@ -139,10 +139,25 @@ def load_object_word_queries(path: Path) -> dict:
     return out
 
 
-def _find_target_final_step(step_word_map: dict, target_word: str, token_labels: list) -> int:
+def _find_target_final_step(step_word_map: dict, target_word: str, token_labels: list) -> tuple[int, list[str]]:
     target_n = _norm_word(target_word)
     if not target_n:
-        return -1
+        return -1, []
+
+    def _match_token_span(parts: list[str]) -> tuple[int, list[str]]:
+        """Return the last token index and matched labels for a contiguous span."""
+        if not parts:
+            return -1, []
+
+        for i in range(len(token_labels) - len(parts) + 1):
+            match = True
+            for j, part in enumerate(parts):
+                if _norm_word(token_labels[i + j]) != part:
+                    match = False
+                    break
+            if match:
+                return i + len(parts) - 1, token_labels[i:i + len(parts)]
+        return -1, []
 
     # Check if this is a spatial relation phrase (contains "+")
     if "+" in target_word:
@@ -151,18 +166,19 @@ def _find_target_final_step(step_word_map: dict, target_word: str, token_labels:
         parts = [p for p in parts if p]  # Remove empty parts
         
         if len(parts) > 1:
-            # Try to find consecutive matching tokens in token_labels
-            for i in range(len(token_labels) - len(parts) + 1):
-                # Check if tokens starting at position i match all parts
-                match = True
-                for j, part in enumerate(parts):
-                    if _norm_word(token_labels[i + j]) != part:
-                        match = False
-                        break
-                
-                if match:
-                    print(f"    [MATCH SPATIAL] target_word='{target_word}' -> steps {i}-{i+len(parts)-1} (tokens: {token_labels[i:i+len(parts)]})")
-                    return i  # Return the first token position
+            # Try to find consecutive matching tokens in the written order first.
+            i, matched_labels = _match_token_span(parts)
+            if i >= 0:
+                print(f"    [MATCH SPATIAL] target_word='{target_word}' -> steps {i-len(parts)+1}-{i} (tokens: {matched_labels})")
+                return i, matched_labels
+
+            # Some generations flip the order of the same words (for example: 'brown bear').
+            reversed_parts = list(reversed(parts))
+            if reversed_parts != parts:
+                i, matched_labels = _match_token_span(reversed_parts)
+                if i >= 0:
+                    print(f"    [MATCH SPATIAL REVERSED] target_word='{target_word}' -> steps {i-len(parts)+1}-{i} (tokens: {matched_labels})")
+                    return i, matched_labels
             
             # Fallback: try to find any part of the spatial relation (including morphological variants)
             # Try matching the most significant part (usually the last one, the object/descriptor)
@@ -185,7 +201,7 @@ def _find_target_final_step(step_word_map: dict, target_word: str, token_labels:
             
             if best_match >= 0:
                 print(f"    [MATCH SPATIAL MORPHO] target_word='{target_word}' -> step {best_match} (token: {token_labels[best_match]})")
-                return best_match
+                return best_match, [token_labels[best_match]]
 
     candidates = []
     for step, meta in step_word_map.items():
@@ -195,7 +211,7 @@ def _find_target_final_step(step_word_map: dict, target_word: str, token_labels:
     if candidates:
         result = max(candidates)
         print(f"    [MATCH] target_word='{target_word}' (norm='{target_n}') -> step {result} in step_word_map")
-        return result
+        return result, [step_word_map[result]["word"]] if result in step_word_map else []
 
     # Fallback: exact token label match.
     last = -1
@@ -205,12 +221,13 @@ def _find_target_final_step(step_word_map: dict, target_word: str, token_labels:
     
     if last >= 0:
         print(f"    [FALLBACK] target_word='{target_word}' (norm='{target_n}') -> step {last} in token_labels")
+        return last, [token_labels[last]]
     else:
         print(f"    [NOT FOUND] target_word='{target_word}' (norm='{target_n}')")
         print(f"              step_word_map keys: {list(step_word_map.keys())}")
         print(f"              step_word_map words: {[_norm_word(m.get('word', '')) for m in step_word_map.values()]}")
         print(f"              token_labels: {token_labels}")
-    return last
+    return last, []
 
 
 # ---------------------------------------------------------------------------
@@ -862,9 +879,13 @@ def evaluate_image(ctx: dict, obj_masks: dict, spatial_cfg: dict,
             if mask_id not in obj_masks:
                 return None
 
-            target_step = _find_target_final_step(step_word_map, target_word, token_labels)
+            target_step, matched_labels = _find_target_final_step(step_word_map, target_word, token_labels)
             if target_step < 0 or target_step >= num_rounds:
                 return None
+
+            preserve_words = [obj_name]
+            preserve_words.extend(matched_labels[:-1])
+            preserve_words = list(dict.fromkeys(w for w in preserve_words if w))
 
             local_img_scores = []
             img_map_local = None
@@ -878,7 +899,7 @@ def evaluate_image(ctx: dict, obj_masks: dict, spatial_cfg: dict,
                     step,
                     local_img_scores,
                     False,
-                    preserve_prev_words=[obj_name],
+                    preserve_prev_words=preserve_words,
                 )
                 layer_step_paths[layer_idx][step] = save_path
 
